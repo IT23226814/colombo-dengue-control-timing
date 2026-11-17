@@ -30,6 +30,14 @@ def test_model_cell_is_identical_to_src_seir():
         "the notebook's model cell and src/seir.py differ: copy one into the other"
 
 
+def test_mcmc_cell_is_identical_to_src_mcmc():
+    mcmc_cells = [src for kind, src in cells() if kind == "code" and "def metropolis" in src]
+    assert len(mcmc_cells) == 1, "expected exactly one MCMC code cell"
+    src_file = (ROOT / "src" / "mcmc.py").read_text()
+    assert mcmc_cells[0].rstrip("\n") == src_file.rstrip("\n"), \
+        "the notebook's MCMC cell and src/mcmc.py differ: copy one into the other"
+
+
 def test_required_sections_in_order():
     text = "\n".join(src for kind, src in cells() if kind == "markdown")
     positions = [text.find(h) for h in REQUIRED_HEADINGS]
