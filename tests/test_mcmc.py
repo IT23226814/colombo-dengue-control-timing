@@ -16,6 +16,7 @@ PRIORS = {
     "positive": mcmc.Prior("lognormal", lo=0.0, mu=0.5, sd=0.7),
     "real": mcmc.Prior("normal", mu=1.0, sd=2.0),
     "beta": mcmc.Prior("beta", lo=0.0, hi=1.0, a=2.0, b=5.0),
+    "loguniform": mcmc.Prior("loguniform", lo=0.005, hi=1.0),
 }
 
 
@@ -37,6 +38,9 @@ def test_prior_densities_match_scipy_up_to_a_constant():
     diff = PRIORS["positive"].log_density(x) - stats.lognorm(s=0.7, scale=np.exp(0.5)).logpdf(x)
     np.testing.assert_allclose(diff, diff[0])
     assert np.all(np.isinf(PRIORS["bounded"].log_density(np.array([1.9, 5.1]))))
+    x = np.linspace(0.01, 0.9, 7)
+    diff = PRIORS["loguniform"].log_density(x) - stats.loguniform(0.005, 1.0).logpdf(x)
+    np.testing.assert_allclose(diff, diff[0])
 
 
 def test_negbin_matches_scipy():
@@ -132,3 +136,37 @@ def test_background_adds_a_constant_to_expected_cases():
     lp0 = m0.log_posterior(m0.to_z({"beta0": np.array([0.9])}))
     lp1 = m1.log_posterior(m1.to_z({"beta0": np.array([0.9]), "bg": np.array([300.0])}))
     assert lp1[0] > lp0[0] + 100
+
+
+def test_effective_reproduction_number_parameterisation_matches_beta0():
+    N = 2_375_415
+    y = np.full(20, 400.0)
+    fixed = dict(N=N, amp=0.3, phase=20.0, rho=0.1, i0=300.0, k=30.0)
+    by_beta = mcmc.seir_model(y, {"beta0": mcmc.Prior("uniform", lo=0.5, hi=10.0),
+                                  "s0": mcmc.Prior("uniform", lo=0.05, hi=1.0)}, fixed, seir.simulate, seir.Params)
+    by_re = mcmc.seir_model(y, {"Re": mcmc.Prior("uniform", lo=0.2, hi=5.0),
+                                "s0": mcmc.Prior("uniform", lo=0.05, hi=1.0)}, fixed, seir.simulate, seir.Params)
+    s0 = np.array([0.3, 0.6])
+    beta0 = np.array([4.0, 2.5])
+    re = beta0 * s0 / seir.GAMMA_DEFAULT
+    ll_beta = by_beta.log_likelihood({"beta0": beta0, "s0": s0})
+    ll_re = by_re.log_likelihood({"Re": re, "s0": s0})
+    np.testing.assert_allclose(ll_re, ll_beta, rtol=1e-12)
+
+
+def test_chain_stuck_in_a_poor_mode_is_restarted_during_burn_in():
+    # Two Gaussian modes 40 sd apart; the far one is 1e-6 times as heavy. One chain starts there.
+    priors = {"x": mcmc.Prior("uniform", lo=-100, hi=100)}
+
+    def loglik(theta):
+        x = theta["x"]
+        return np.logaddexp(-0.5 * x**2, np.log(1e-6) - 0.5 * (x - 40.0) ** 2)
+
+    model = mcmc.Model(priors=priors, log_likelihood=loglik)
+    z0 = model.to_z({"x": np.array([0.5, -0.5, 1.0, -1.0, 0.0, 0.2, -0.3, 40.0])})
+    res = mcmc.metropolis(model, z0, n_burn=2000, n_keep=2000, rng=np.random.default_rng(5))
+    assert res.n_reset >= 1
+    assert np.all(np.abs(res.theta["x"].mean(axis=0)) < 1.0)          # every chain ends in the main mode
+    off = mcmc.metropolis(model, z0, n_burn=2000, n_keep=2000, rng=np.random.default_rng(5),
+                          reset_outliers=False)
+    assert off.n_reset == 0 and abs(off.theta["x"][:, -1].mean() - 40.0) < 2.0   # without it, the chain stays stuck
