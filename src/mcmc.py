@@ -21,9 +21,13 @@ Metropolis algorithm (per chain)
     accept with probability min(1, exp(log p(z') - log p(z)))
 During burn-in the proposal covariance L L^T is adapted from the chains'
 recent samples (scaled by 2.38^2 / d) and its overall scale is tuned towards
-an acceptance rate of about 0.25. After burn-in the proposal is frozen, so
-the kept samples come from a fixed Metropolis kernel with the posterior as its
-stationary distribution.
+an acceptance rate of about 0.25. Twice during burn-in (at 1/2 and 3/4),
+chains whose recent mean log-posterior is an outlier far below the others
+(below Q1 - 2 IQR across chains) are restarted from the current state of a
+randomly chosen non-outlier chain, so a chain stuck in a poor local mode does
+not ruin the run. After burn-in the proposal is frozen and no chain is
+touched, so the kept samples come from a fixed Metropolis kernel with the
+posterior as its stationary distribution.
 """
 
 from __future__ import annotations
@@ -42,10 +46,12 @@ from scipy.special import gammaln
 class Prior:
     """Prior for one parameter.
 
-    kind: "uniform" (on lo..hi), "normal" (mu, sd, truncated to lo..hi),
-          "lognormal" (mu, sd of log theta; positive), "beta" (a, b on lo..hi).
-    The sampling transform follows from the support: bounded -> logit,
-    positive -> log, otherwise identity.
+    kind: "uniform" (on lo..hi), "loguniform" (density proportional to
+          1/theta on lo..hi, lo > 0: uniform on the log scale), "normal"
+          (mu, sd, truncated to lo..hi), "lognormal" (mu, sd of log theta;
+          positive), "beta" (a, b on lo..hi).
+    The sampling transform follows from the support: bounded -> logit
+    (logit of log theta for loguniform), positive -> log, otherwise identity.
     """
 
     kind: str
@@ -58,6 +64,8 @@ class Prior:
 
     @property
     def transform(self) -> str:
+        if self.kind == "loguniform":
+            return "loglogit"
         if np.isfinite(self.lo) and np.isfinite(self.hi):
             return "logit"
         if self.lo == 0.0 and not np.isfinite(self.hi):
@@ -71,6 +79,8 @@ class Prior:
         with np.errstate(divide="ignore", invalid="ignore"):
             if self.kind == "uniform":
                 lp = np.zeros_like(theta)
+            elif self.kind == "loguniform":
+                lp = -np.log(theta)
             elif self.kind == "normal":
                 lp = -0.5 * ((theta - self.mu) / self.sd) ** 2
             elif self.kind == "lognormal":
@@ -83,6 +93,9 @@ class Prior:
         return np.where(inside, lp, -np.inf)
 
     def to_theta(self, z: np.ndarray) -> np.ndarray:
+        if self.transform == "loglogit":
+            a, b = np.log(self.lo), np.log(self.hi)
+            return np.exp(a + (b - a) / (1.0 + np.exp(-z)))
         if self.transform == "logit":
             return self.lo + (self.hi - self.lo) / (1.0 + np.exp(-z))
         if self.transform == "log":
@@ -91,6 +104,9 @@ class Prior:
 
     def to_z(self, theta: np.ndarray) -> np.ndarray:
         theta = np.asarray(theta, dtype=float)
+        if self.transform == "loglogit":
+            x = (np.log(theta) - np.log(self.lo)) / (np.log(self.hi) - np.log(self.lo))
+            return np.log(x) - np.log1p(-x)
         if self.transform == "logit":
             x = (theta - self.lo) / (self.hi - self.lo)
             return np.log(x) - np.log1p(-x)
@@ -100,6 +116,10 @@ class Prior:
 
     def log_jacobian(self, z: np.ndarray) -> np.ndarray:
         """log |d theta / d z|."""
+        if self.transform == "loglogit":
+            a, b = np.log(self.lo), np.log(self.hi)
+            log_theta = a + (b - a) / (1.0 + np.exp(-z))
+            return log_theta + np.log(b - a) - np.logaddexp(0.0, z) - np.logaddexp(0.0, -z)
         if self.transform == "logit":
             # d/dz logistic(z) = s (1 - s); computed stably with logaddexp
             return np.log(self.hi - self.lo) - np.logaddexp(0.0, z) - np.logaddexp(0.0, -z)
@@ -173,6 +193,7 @@ class MCMCResult:
     acceptance: np.ndarray   # (n_chains,) acceptance rate after burn-in
     proposal_cov: np.ndarray # (d, d) frozen proposal covariance used after burn-in
     burn_in_trace: dict      # {name: (n_burn, n_chains)} for trace plots
+    n_reset: int = 0         # outlier chains restarted during burn-in
 
     def flat(self, name: str) -> np.ndarray:
         """All kept samples of one parameter, chains pooled."""
@@ -181,13 +202,14 @@ class MCMCResult:
 
 def metropolis(model: Model, z0: np.ndarray, n_burn: int, n_keep: int, rng: np.random.Generator,
                init_scale: float = 0.1, adapt_every: int = 100, target_accept: float = 0.25,
-               thin: int = 1) -> MCMCResult:
+               thin: int = 1, reset_outliers: bool = True) -> MCMCResult:
     """Run len(z0) random-walk Metropolis chains in parallel.
 
     z0: (n_chains, d) starting points on the sampling scale (use different,
         over-dispersed starts so convergence can be checked).
     n_burn: iterations with proposal adaptation (discarded).
     n_keep: iterations kept after burn-in (before thinning).
+    reset_outliers: restart outlier chains during burn-in (see module docstring).
     """
     z = np.array(z0, dtype=float)
     n_chains, d = z.shape
@@ -198,7 +220,10 @@ def metropolis(model: Model, z0: np.ndarray, n_burn: int, n_keep: int, rng: np.r
     cov = np.eye(d) * init_scale**2          # proposal covariance before adaptation
     log_scale = 0.0                          # multiplies the covariance by exp(2 * log_scale)
     burn = np.empty((n_burn, n_chains, d))
+    burn_lp = np.empty((n_burn, n_chains))
     window_accepts = 0
+    n_reset = 0
+    checkpoints = {n_burn // 2, (3 * n_burn) // 4} if reset_outliers and n_chains >= 4 else set()
 
     def step(z, lp, chol):
         proposal = z + rng.standard_normal((n_chains, d)) @ chol.T
@@ -212,15 +237,28 @@ def metropolis(model: Model, z0: np.ndarray, n_burn: int, n_keep: int, rng: np.r
     for i in range(n_burn):
         z, lp, acc = step(z, lp, np.exp(log_scale) * chol)
         burn[i] = z
+        burn_lp[i] = lp
         window_accepts += acc.sum()
+        if (i + 1) in checkpoints:
+            recent_lp = burn_lp[i + 1 - n_burn // 4: i + 1].mean(axis=0)   # mean log-posterior per chain
+            q1, q3 = np.percentile(recent_lp, [25, 75])
+            outliers = np.flatnonzero(recent_lp < q1 - 2.0 * max(q3 - q1, 1.0))
+            good = np.setdiff1d(np.arange(n_chains), outliers)
+            for c in outliers:
+                donor = rng.choice(good)
+                z[c], lp[c] = z[donor], lp[donor]
+            n_reset += len(outliers)
         if (i + 1) % adapt_every == 0:
             rate = window_accepts / (adapt_every * n_chains)
             log_scale += (rate - target_accept) * 2.0 / np.sqrt((i + 1) / adapt_every)
             window_accepts = 0
-            # empirical covariance of the second half of burn-in so far, all chains pooled
-            recent = burn[(i + 1) // 2: i + 1].reshape(-1, d)
-            if recent.shape[0] > 10 * d:
-                emp = np.cov(recent, rowvar=False) + 1e-8 * np.eye(d)
+            # within-chain covariance of the second half of burn-in so far: deviations from each
+            # chain's own mean, pooled over chains, so chains that have not met yet do not
+            # inflate the proposal with the distance between them
+            recent = burn[(i + 1) // 2: i + 1]                       # (n_recent, n_chains, d)
+            if recent.shape[0] * n_chains > 10 * d:
+                dev = (recent - recent.mean(axis=0)).reshape(-1, d)
+                emp = dev.T @ dev / (dev.shape[0] - n_chains) + 1e-8 * np.eye(d)
                 cov = 2.38**2 / d * emp
                 chol = np.linalg.cholesky(cov)
 
@@ -239,7 +277,7 @@ def metropolis(model: Model, z0: np.ndarray, n_burn: int, n_keep: int, rng: np.r
     return MCMCResult(
         names=model.names, z=keep, theta=theta, log_post=keep_lp,
         acceptance=accepted / n_keep, proposal_cov=final_chol @ final_chol.T,
-        burn_in_trace=model.to_theta(burn),
+        burn_in_trace=model.to_theta(burn), n_reset=n_reset,
     )
 
 
@@ -309,6 +347,10 @@ def seir_model(y_obs: np.ndarray, priors: dict[str, Prior], fixed: dict, simulat
     priors: priors for any of beta0, amp, phase, rho, s0, i0 (initial
             infectious people), k (negative-binomial dispersion) and bg
             (background reported cases per week; omit it to fix bg = 0).
+            Instead of beta0 the prior may be on Re = beta0 * s0 / gamma, the
+            mean effective reproduction number at the start; the data fix
+            this product much better than beta0 and s0 separately, so
+            sampling (Re, s0) avoids a long curved ridge in (beta0, s0).
     fixed:  values for everything not estimated: Params fields (must include
             N) and, optionally, k and bg. Without k (estimated or fixed) the
             likelihood is Poisson.
@@ -325,7 +367,10 @@ def seir_model(y_obs: np.ndarray, priors: dict[str, Prior], fixed: dict, simulat
 
     def log_likelihood(theta: dict) -> np.ndarray:
         kwargs = dict(fixed_model)
-        kwargs.update({n: v for n, v in theta.items() if n not in observation_fields})
+        kwargs.update({n: v for n, v in theta.items() if n not in observation_fields | {"Re"}})
+        if "Re" in theta:   # mean effective reproduction number Re = beta0 * s0 / gamma
+            gamma = kwargs.get("gamma", Params.__dataclass_fields__["gamma"].default)
+            kwargs["beta0"] = theta["Re"] * gamma / kwargs["s0"]
         p = Params(**kwargs)
         arr = p.arrays()
         n_chains = len(next(iter(theta.values())))
