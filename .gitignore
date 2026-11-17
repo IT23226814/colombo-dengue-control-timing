@@ -7,3 +7,4 @@ Thumbs.db
 *.key
 data/raw/
 .pytest_cache/
+notebook/figures/
