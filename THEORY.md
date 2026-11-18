@@ -208,11 +208,15 @@ $$
 
 **Paired comparisons.** Every scenario uses the same samples, so differences between scenarios, such as the cost of delay, are computed sample by sample before taking quantiles. Their intervals are therefore much narrower than the difference of two separate intervals would suggest.
 
-**Monte Carlo error.** The scenario summaries also have a Monte Carlo error, because they come from a finite number of samples. A separate check repeated the 2,000-sample draw 20 times; it is not part of the notebook. For the 40% sustained cut from week 21:
-- the median of $\Delta$ (4,689) varies with a standard deviation of about 19 cases (0.4%);
-- the 2.5th and 97.5th percentiles vary by about 30 and 50 cases.
+**Monte Carlo error.** The scenario summaries also have a Monte Carlo error, because they come from a finite number of samples. To measure it, the notebook (§5.2) recomputes the 40% sustained cut from week 21 for 20 independent draws of 2,000 samples (generator `[SEED, 36]`). The spread of each summary across the draws is its Monte Carlo standard error:
 
-This is small compared with the width of the credible interval (3,418–6,108).
+| Summary | Mean over 20 draws | Monte Carlo s.e. |
+|---|---|---|
+| median of $\Delta$ | 4,704 | 15 cases (0.3%) |
+| 2.5th percentile | 3,496 | 46 cases |
+| 97.5th percentile | 6,070 | 45 cases |
+
+These errors are below 2% of the width of the 95% credible interval, which is about 2,600 cases. The notebook asserts two things: that the error is below 5% of that width, and that the repeated draws agree with the §5.1 median within 4 standard errors.
 
 **Uncertainty that is *not* in the intervals.** The model structure and the fixed incubation and infectious periods are not part of the credible intervals. Sections 5.3 and 5.4 of the notebook examine them separately (see §4.4).
 
@@ -240,6 +244,7 @@ Every check is an `assert` in the notebook, so *Run all* stops if one fails. Fur
 | 2026 calibration converged (§3.4) | $\hat R < 1.1$ | $\hat R \le 1.008$, smallest ESS 1,675 | yes |
 | Scenario results independent of step size (§5.1) | change $< 1$ case for 4× smaller step | $1.2\times10^{-4}$ cases | yes |
 | Cases prevented not merely deferred to 2027 (§5.1) | change $< 5\%$ of largest effect | at most 158 cases | yes |
+| Monte Carlo error of the scenario summaries, 20 draws of 2,000 samples (§5.2) | $< 5\%$ of credible-interval width; agrees with §5.1 | at most 1.8%; median 4,704 against 4,689 | yes |
 | Host–vector model: conservation and exact mosquito total (§5.4) | round-off | $3.9\times10^{-15}$; $3.8\times10^{-8}$ | yes |
 | Host–vector model reduces to SEIR when mosquito rates are very fast (§5.4) | total infections within 1% | 0.19% | yes |
 | Web demo (JavaScript) against the notebook (§5.5) | within 1% | relative difference $2\times10^{-15}$ | yes |
