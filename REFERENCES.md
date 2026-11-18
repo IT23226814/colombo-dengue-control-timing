@@ -67,5 +67,6 @@ The *Used for* column says what each reference supports in this project.
 
 - **[4]:** the WHO fact sheet's text on viraemia ("about 4–5 days, … as long as 12 days") and on the 8–12 day extrinsic incubation was read on the live page on Nov. 16, 2026. The page shows the date 21 August 2025. When this list was compiled (Nov. 18, 2026) the WHO site returned a server timeout (HTTP 524), so the page could not be reopened that day.
 - **[15]:** Crossref lists this DOI under the 1993 second revised edition without author names. The authors and subtitle were taken from the book's listing.
+- **[19]:** Crossref and OpenAlex give only the first page (223). The page range 223–242 comes from the Semantic Scholar record for the same DOI.
 - **[14]:** Crossref's metadata gives no reliable edition number. The 2016 Wiley book is the third edition according to its listing.
 - **[1]:** the weekly report PDFs were downloaded and parsed on Nov. 15, 2026 (see `data/README.md`). The report page and the first PDF still opened on Nov. 18, 2026.
