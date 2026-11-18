@@ -38,6 +38,14 @@ def test_mcmc_cell_is_identical_to_src_mcmc():
         "the notebook's MCMC cell and src/mcmc.py differ: copy one into the other"
 
 
+def test_hostvector_cell_is_identical_to_src_hostvector():
+    hv_cells = [src for kind, src in cells() if kind == "code" and "def simulate_hv" in src]
+    assert len(hv_cells) == 1, "expected exactly one host-vector code cell"
+    src_file = (ROOT / "src" / "hostvector.py").read_text()
+    assert hv_cells[0].rstrip("\n") == src_file.rstrip("\n"), \
+        "the notebook's host-vector cell and src/hostvector.py differ: copy one into the other"
+
+
 def test_required_sections_in_order():
     text = "\n".join(src for kind, src in cells() if kind == "markdown")
     positions = [text.find(h) for h in REQUIRED_HEADINGS]
