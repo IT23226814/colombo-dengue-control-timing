@@ -7,6 +7,8 @@
 | `colombo_population.csv` | Colombo District population, 2,375,415 | Department of Census and Statistics, *Census of Population and Housing 2024*, final report, [statistics.gov.lk](https://www.statistics.gov.lk/Blog/Blog_details) | Public government statistics | 2026-11-15 |
 | `sources/weekly_report_urls.txt` | URLs of the 45 weekly report PDFs used | NDCU website | — | 2026-11-15 |
 | `build_colombo_cases.py` | Script that downloads the reports and rebuilds both case CSVs | Own code | MIT | — |
+| `colombo_weekly_rainfall.csv` | Weekly rainfall (mm), mean of three points across Colombo District, 2025 week 40 to 2026 week 45 | Open-Meteo Historical Weather API (ERA5-based reanalysis), [open-meteo.com](https://open-meteo.com/en/docs/historical-weather-api) | CC BY 4.0 (attribution: Open-Meteo.com) | 2026-11-18 |
+| `build_colombo_rainfall.py` | Script that downloads the daily precipitation and rebuilds the weekly rainfall CSV | Own code | MIT | — |
 
 ## Columns of `colombo_weekly_cases.csv`
 
@@ -29,6 +31,17 @@ To rebuild the files (the PDFs are downloaded into `data/raw/`, which is not com
 ```bash
 pip install pypdf pandas
 python data/build_colombo_cases.py
+```
+
+## Rainfall (`colombo_weekly_rainfall.csv`)
+
+Columns: `year`, `week` (ISO 8601 week, Monday to Sunday, the same weeks as the case data), `week_start`, `week_end`, `rain_mm` (weekly total, mean of the three points).
+
+Daily precipitation is taken at Colombo (6.93° N, 79.86° E, west coast), Homagama (6.84° N, 80.00° E, centre) and Avissawella (6.95° N, 80.21° E, east), averaged over the three points and summed over each week. The series starts 13 weeks before 2026 so that the host–vector model's lagged rainfall term has data for week 1. These are reanalysis estimates on a grid of about 10 km, not rain-gauge measurements.
+
+```bash
+pip install pandas
+python data/build_colombo_rainfall.py
 ```
 
 ## Quality checks
