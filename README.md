@@ -35,6 +35,8 @@ jupyter notebook notebook/colombo-dengue-control-timing.ipynb
 
 [How you know the numbers are right: the check(s) you ran and the result, e.g. "the simulated mean wait matches the analytic M/M/1 value to within 2%".]
 
+**Web demo against the notebook.** The demo runs the same model in JavaScript. For a reference scenario it shows its result beside the notebook's: the fitted (highest-posterior) parameters, with a 40% cut from week 21 to the end of the year. Both give **4,665.2 reported cases prevented**. The stated tolerance is 1%, and the two agree to better than 0.0001%. The notebook (Section 5.5) checks that the demo uses the same parameter set. `tests/test_demo.py` runs the JavaScript model and compares every weekly value with the Python model.
+
 ![Verification plot](figures/verification.png)
 
 ## Concepts applied
