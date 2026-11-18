@@ -2,7 +2,7 @@
 
 [One-sentence pitch: what this simulation does and the question it answers.]
 
-**[Live demo](https://IT23226814.github.io/colombo-dengue-control-timing/)** · [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/IT23226814/colombo-dengue-control-timing/blob/main/notebook/colombo-dengue-control-timing.ipynb)
+**[Live demo](https://it23226814.github.io/colombo-dengue-control-timing/)** · [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/IT23226814/colombo-dengue-control-timing/blob/main/notebook/colombo-dengue-control-timing.ipynb)
 
 ![Screenshot of the web demo](figures/demo-screenshot.png)
 
@@ -14,7 +14,7 @@
 
 **Notebook:** click the *Open in Colab* badge above, then *Runtime → Run all*. Everything installs and runs in about [N] minutes on a free runtime.
 
-**Web demo:** open the [live demo](https://IT23226814.github.io/colombo-dengue-control-timing/), or download this repository and double-click `docs/index.html`.
+**Web demo:** open the [live demo](https://it23226814.github.io/colombo-dengue-control-timing/), or download this repository and double-click `docs/index.html`.
 
 **Run locally (optional):**
 

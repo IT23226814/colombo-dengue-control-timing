@@ -1,6 +1,6 @@
 # User guide: [Project Title] web demo
 
-**Open the demo:** [https://[your-github-user].github.io/[repository-name]/]. It runs entirely in your browser (current Chrome, Edge or Firefox). Nothing is installed or uploaded.
+**Open the demo:** [https://it23226814.github.io/colombo-dengue-control-timing/](https://it23226814.github.io/colombo-dengue-control-timing/), or download the repository and double-click `docs/index.html`. It runs entirely in your browser (current Chrome, Edge or Firefox). Nothing is installed or uploaded.
 
 ![Labelled screenshot of the demo](figures/demo-screenshot-labelled.png)
 
