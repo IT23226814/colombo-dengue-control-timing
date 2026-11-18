@@ -21,8 +21,8 @@ Each is reported as a posterior median with a 95% credible interval (CrI).
 ## 2. Assumptions
 
 1. **Homogeneous mixing** within the district, with no movement between districts. This is the standard simplest assumption, and it is the reason the fitted susceptible fraction is small (§3.4): transmission concentrated in some neighbourhoods appears as a small, well-mixed population.
-2. **Host-only transmission.** The mosquito stage, including the 8–12 day extrinsic incubation [4], is absorbed into the transmission rate $\beta(t)$. Section 5.4 of the notebook relaxes this with an explicit host–vector model (see §3.5 below).
-3. **Seasonality** is a single annual cosine in $\beta$, standing in for rainfall- and temperature-driven mosquito abundance.
+2. **Host-only transmission.** Many dengue models include the mosquito explicitly [12, 13]. Here the mosquito stage, including the 8–12 day extrinsic incubation [4], is absorbed into the transmission rate $\beta(t)$. Section 5.4 of the notebook relaxes this with an explicit host–vector model (see §3.5 below).
+3. **Seasonality** is a single annual cosine in $\beta$ (sinusoidal forcing [11]), standing in for rainfall- and temperature-driven mosquito abundance.
 4. **Immunity.** Only a fraction $s_0$ of the population is susceptible at the start of the year. Recovery gives immunity for the rest of the season, and serotypes are not distinguished. Over one season births, deaths and waning immunity are negligible.
 5. **Reporting.** Reported cases are a fixed fraction $\rho$ of new symptomatic infections, plus a constant background $b$ per week. The background covers cases the single-season dynamics do not produce: endemic pockets, imported infections, and suspected cases that are not dengue. Reporting delays are ignored, because the series uses revised weekly counts.
 6. **Intervention.** Any combination of measures is summarised as a fractional cut $r$ in transmission between a start and an end week.
@@ -31,6 +31,8 @@ Each is reported as a posterior median with a 95% credible interval (CrI).
 ## 3. Model equations
 
 ### 3.1 Seasonal SEIR model
+
+The model is a seasonal SEIR compartmental model, a standard extension of the Kermack–McKendrick epidemic model [10, 11].
 
 Time $t$ is in **weeks**. The state variables (all in people) are $S$ susceptible, $E$ exposed (infected, not yet infectious), $I$ infectious, $R$ recovered or immune, and $C$, the cumulative number of new symptomatic infections.
 
@@ -137,7 +139,7 @@ $$
 
 ### 4.1 Fourth-order Runge–Kutta (RK4)
 
-The ODEs are solved with the classical RK4 scheme, written from scratch. For a step $h$ from $t_n$ with state $y_n$:
+The ODEs are solved with the classical RK4 scheme [14], written from scratch. For a step $h$ from $t_n$ with state $y_n$:
 
 $$
 \begin{aligned}
@@ -157,13 +159,13 @@ $$
 - **Scenarios and verification:** $h = 1/7$ week (one day). The RK4 error there is $1.5\times10^{-3}$ people out of 48,560 cumulative infections (§4.3), negligible next to the data and parameter uncertainty. A 4× smaller step changes cases prevented by at most $1.2\times10^{-4}$ cases (§5.1).
 - **Calibration:** $h = 1/2$ week, keeping the error below one person while making each likelihood evaluation 3.5 times cheaper.
 
-**Vectorisation.** All parameters may be NumPy arrays, so one RK4 call integrates thousands of parameter sets at once. This is how MCMC chains and posterior samples are run.
+**Vectorisation.** All parameters may be NumPy [24] arrays, so one RK4 call integrates thousands of parameter sets at once. This is how MCMC chains and posterior samples are run.
 
 **Stability.** The fastest rate in the SEIR model is $\gamma \approx 1.4$ per week. With $h \le 1/2$ week, $h\gamma \le 0.7$, well inside RK4's stability region ($|h\lambda| \lesssim 2.8$ on the negative real axis). In the host–vector model the fastest mosquito rate is $\nu + \mu \approx 2.4$ per week, giving $h(\nu+\mu) \le 1.2$.
 
 ### 4.2 Bayesian calibration with Metropolis MCMC
 
-The posterior is $p(\theta \mid y) \propto p(y \mid \theta)\,p(\theta)$, with the likelihood of §3.3 and the priors of §3.4. It is sampled with a random-walk Metropolis algorithm written from scratch; SciPy is used only for $\log\Gamma$.
+The posterior is $p(\theta \mid y) \propto p(y \mid \theta)\,p(\theta)$, with the likelihood of §3.3 and the priors of §3.4. It is sampled with a random-walk Metropolis algorithm [16, 17] written from scratch; SciPy is used only for $\log\Gamma$.
 
 **Transformed scale.** Each parameter $\theta$ is sampled on an unconstrained scale $z$:
 - logit for bounded parameters, $z = \operatorname{logit}\big((\theta-\ell)/(u-\ell)\big)$;
@@ -178,7 +180,7 @@ The log-Jacobian $\log|d\theta/dz|$ is added to the log-density, so the prior on
 The proposal is symmetric, so the proposal densities cancel and the kernel satisfies detailed balance with respect to the posterior.
 
 **Tuning during burn-in only.**
-- **Proposal covariance.** $LL^\top$ is set to $\tfrac{2.38^2}{d}\hat\Sigma$, where $d$ is the number of parameters and $\hat\Sigma$ is the *within-chain* covariance of recent samples (deviations from each chain's own mean). Its overall scale is nudged towards an acceptance rate of about 0.25.
+- **Proposal covariance.** $LL^\top$ is set to $\tfrac{2.38^2}{d}\hat\Sigma$, where $d$ is the number of parameters and $\hat\Sigma$ is the *within-chain* covariance of recent samples (deviations from each chain's own mean). The factor $2.38^2/d$ is the optimal scaling for random-walk Metropolis [18], and estimating $\hat\Sigma$ from the chain follows the adaptive Metropolis idea [19]. Its overall scale is nudged towards an acceptance rate of about 0.25.
 - **Outlier restarts.** Halfway and three-quarters of the way through burn-in, any chain whose recent mean log-posterior lies below $Q_1 - 2\,\mathrm{IQR}$ across chains is restarted from the state of a randomly chosen healthy chain.
 - **Frozen proposal.** After burn-in the proposal is frozen, so the kept samples come from a fixed Markov chain.
 
@@ -190,8 +192,8 @@ The proposal is symmetric, so the proposal densities cancel and the kernel satis
 - Generator `default_rng([SEED, 34])`, with `SEED = 20261115`.
 
 **Convergence diagnostics.**
-- *Split-$\hat R$*: each chain is split in half, and the between- and within-half-chain variances are compared. Values near 1 mean the chains agree. The notebook asserts $\hat R < 1.1$; the 2026 fit reaches at most 1.008.
-- *Effective sample size*: computed from the multi-chain autocorrelation, truncated by Geyer's initial positive sequence. The Monte Carlo standard error of a posterior mean is $\text{sd}/\sqrt{\text{ESS}}$. The smallest ESS in the 2026 fit is 1,675.
+- *Split-$\hat R$* [20, 21]: each chain is split in half, and the between- and within-half-chain variances are compared. Values near 1 mean the chains agree. The notebook asserts $\hat R < 1.1$; the 2026 fit reaches at most 1.008.
+- *Effective sample size*: computed from the multi-chain autocorrelation, truncated by Geyer's initial positive sequence [22]. The Monte Carlo standard error of a posterior mean is $\text{sd}/\sqrt{\text{ESS}}$. The smallest ESS in the 2026 fit is 1,675.
 - *Trace plots*: `figures/mcmc_traces.png`.
 - *Posterior predictive check*: 43 of the 45 weeks lie inside the 95% predictive band.
 
@@ -237,7 +239,7 @@ Every check is an `assert` in the notebook, so *Run all* stops if one fails. Fur
 | All compartments non-negative (§4.1) | $\ge 0$ | smallest $3.7\times10^{-43}$ | yes |
 | **Limiting case $R_{0,\max} = 0.9 < 1$** (§4.2): cumulative infections $\le E_0 + R_{0,\max}(E_0+I_0)/(1-R_{0,\max})$ | $\le 1{,}900$ people | 1,832 ($a = 0$); 384 ($a = 0.3$); 196 ($a = 0.6$) | yes |
 | Control run $R_0 = 1.5$ produces an outbreak (§4.2) | large outbreak | 1,382,654 infections | yes |
-| **RK4 convergence order** against SciPy DOP853 at relative tolerance $10^{-13}$ (§4.3), fitted for $h = 1/8$ to $1/64$ week | 4 (pass if 3.8–4.2) | 4.12; error ratio per halving → 16.5 | yes |
+| **RK4 convergence order** against SciPy [23] DOP853 [15] at relative tolerance $10^{-13}$ (§4.3), fitted for $h = 1/8$ to $1/64$ week | 4 (pass if 3.8–4.2) | 4.12; error ratio per halving → 16.5 | yes |
 | Euler and RK2 orders, same set-up (§4.3) | 1 and 2 | 1.00 and 2.05 | yes |
 | **Sampler on a known 2-D Gaussian** (§3.3): mean within 4 MC standard errors, $\hat R < 1.02$ | true mean (1, −2) | (0.992, −1.984), $\hat R \le 1.002$, acceptance 0.25–0.26 | yes |
 | **Parameter recovery from synthetic data** (§4.4): every true value inside its 95% CrI, $\hat R < 1.1$ | 8 of 8 | 8 of 8; $\hat R \le 1.052$ | yes |
@@ -271,13 +273,4 @@ Every check is an `assert` in the notebook, so *Run all* stops if one fails. Fur
 
 ## 7. References
 
-See [REFERENCES.md](REFERENCES.md). The numbers [1]–[9] used here are those of the notebook's Section 7:
-- [1] NDCU weekly dengue reports;
-- [2] Census of Population and Housing 2024;
-- [3] Chan & Johansson 2012, incubation periods;
-- [4] WHO dengue fact sheet;
-- [5] Undurraga, Halasa & Shepard 2013, reporting expansion factors;
-- [6] Wearing, Rohani & Keeling 2005;
-- [7] Marino et al. 2008, PRCC methodology;
-- [8] Brady et al. 2013, *Aedes* survival;
-- [9] Open-Meteo historical weather data.
+Full references, each checked against its source, are in [REFERENCES.md](REFERENCES.md). The numbers [1]–[24] are the same as in the notebook's Section 7.
