@@ -26,7 +26,17 @@
 
 ## Check against the notebook
 
-With the default settings, the demo should give **[value ± tolerance]**, matching the notebook result in section [N].
+The box under the results, **Check against the notebook**, always recomputes one reference scenario, whatever the sliders show:
+- **Scenario:** the fitted values, with a 40% cut in transmission from week 21 to the end of the year.
+- **Result:** the cases prevented, shown beside the value the notebook computes for exactly the same parameters (notebook Section 5.5).
+
+| Reference scenario | Notebook (Section 5.5) | Demo | Tolerance |
+|---|---|---|---|
+| Fitted values, 40% cut from week 21 to week 52 | 4,665.2 reported cases prevented | 4,665.2 | within 1% (the two agree to better than 0.0001%) |
+
+You can also reproduce it with the sliders. Press *Restore fitted values*, leave the start week at 21, the reduction at 40% and the duration at "rest of the year". The *Cases prevented* box then shows **4,665**.
+
+This is one parameter set. The notebook's posterior median over 2,000 samples for the same scenario is 4,689, with a 95% credible interval of 3,418–6,108.
 
 ## Limitations
 

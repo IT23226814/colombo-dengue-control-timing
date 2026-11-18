@@ -65,6 +65,12 @@
     </div>
     <p class="note" id="totalsNote">Totals are for weeks 1 to the week shown and include the constant background of reported cases, which the intervention does not change.</p>
 
+    <div class="refcheck" aria-label="Check against the notebook">
+      <strong>Check against the notebook.</strong> Reference scenario: fitted values, 40% cut from week 21 to the end of the year.
+      Cases prevented: demo <span id="refDemo">–</span>, notebook (Section 5.5) <span id="refNotebook">–</span>;
+      difference <span id="refDiff">–</span> <span id="refStatus"></span>
+    </div>
+
     <details open>
       <summary>About / How to use</summary>
       <p><strong>What it shows.</strong> Weekly reported dengue cases in Colombo District in 2026. The grey line is the model with no intervention; the coloured line is the same model with an intervention that cuts transmission by the chosen percentage from the start week, for the chosen number of weeks. Red dots are the cases actually reported in weeks 1–45 of 2026.</p>
@@ -72,6 +78,7 @@
       <p><strong>Try this.</strong> With a 40% cut, compare a start in week 21 (when cases began to rise) with week 25 and week 29. Then try a short 8-week campaign started in week 5 and in week 25.</p>
       <p><strong>The model.</strong> A seasonal SEIR model (susceptible, exposed, infectious, recovered) with transmission rate β(t) = β<sub>0</sub>[1 + a cos(2π(t − φ)/52)]·u(t), where u(t) = 1 − r during the intervention. It is solved with a fourth-order Runge–Kutta method using a one-day step, exactly as in the project notebook. Reported cases are ρ × new infections + a constant background b.</p>
       <p><strong>Fitted values.</strong> The defaults are one posterior sample from the Bayesian (MCMC) calibration to the 2026 data: the sample with the highest posterior density. The incubation period (5.9 days), infectious period (5 days), population (2,375,415), susceptible fraction, reporting rate, initial infections and background are held at their fitted values; only the sliders change.</p>
+      <p><strong>Check against the notebook.</strong> The box above the About panel recomputes one reference scenario (fitted values, 40% cut from week 21 for the rest of the year) whatever the sliders show, and compares it with the value the notebook computes for the same parameters. A difference within 1% means the browser model and the notebook model agree.</p>
       <p><strong>Limits.</strong> One parameter set, no uncertainty bands: the notebook gives credible intervals over 2,000 posterior samples. The model has no explicit mosquitoes; the notebook's host–vector extension shows that some conclusions (for example, that early weak measures can add cases) depend on this choice. This is a teaching tool, not an operational forecast.</p>
       <p><strong>Source.</strong> Code, data and the full analysis: <a href="https://github.com/IT23226814/colombo-dengue-control-timing">github.com/IT23226814/colombo-dengue-control-timing</a>.</p>
     </details>

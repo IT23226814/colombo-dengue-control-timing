@@ -16,6 +16,9 @@ const FIT = {
   i0: 1837.479616271096,      // initial infectious people
   bg: 243.2693273559676,      // background reported cases per week
 };
+// Reference scenario, computed in the notebook (Section 5.5) with the same parameters:
+// a 40% cut sustained from week 21 to the end of the year prevents this many reported cases.
+const NOTEBOOK_REFERENCE = { start: 21, reduction: 0.40, prevented: 4665.155615190242, tolerance: 0.01 };
 const WEEKS = 52;
 const STEPS_PER_WEEK = 7;
 const OBSERVED_2026 = [525, 634, 616, 539, 420, 399, 425, 416, 357, 365, 301, 392, 351, 313, 323,
@@ -56,6 +59,17 @@ function simulate(p) {
   const reported = [];
   for (let w = 0; w < WEEKS; w++) reported.push(p.rho * (C[w + 1] - C[w]) + p.bg);
   return reported;
+}
+
+// Same scenario computed here, independent of the sliders.
+function referenceCheck() {
+  const p = { ...FIT, beta0: FIT.Re * FIT.gamma / FIT.s0, start: Infinity, end: Infinity, reduction: 0 };
+  const sum = (a) => a.reduce((s, v) => s + v, 0);
+  const none = sum(simulate(p));
+  const cut = sum(simulate({ ...p, start: NOTEBOOK_REFERENCE.start - 1, reduction: NOTEBOOK_REFERENCE.reduction }));
+  const demo = none - cut;
+  const relDiff = Math.abs(demo - NOTEBOOK_REFERENCE.prevented) / NOTEBOOK_REFERENCE.prevented;
+  return { demo, notebook: NOTEBOOK_REFERENCE.prevented, relDiff, ok: relDiff <= NOTEBOOK_REFERENCE.tolerance };
 }
 
 // ---------- UI ----------
@@ -213,5 +227,12 @@ for (const [k, v] of Object.entries(DEFAULTS)) $(k).value = v;
 buttons();
 recompute();
 
+const check = referenceCheck();
+$("refDemo").textContent = check.demo.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+$("refNotebook").textContent = check.notebook.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+$("refDiff").textContent = check.relDiff < 1e-6 ? "< 0.0001%" : `${(100 * check.relDiff).toFixed(4)}%`;
+$("refStatus").textContent = check.ok ? "✓ within the 1% tolerance" : "✗ outside the 1% tolerance";
+$("refStatus").className = check.ok ? "ok" : "bad";
+
 // Exposed for checking against the notebook (see README): run simulate() with any parameters.
-window.dengueModel = { FIT, simulate };
+window.dengueModel = { FIT, NOTEBOOK_REFERENCE, simulate, referenceCheck };

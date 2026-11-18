@@ -37,3 +37,7 @@ canvas { width: 100%; height: auto; display: block; background: #fff; }
 details { margin-top: 12px; }
 summary { cursor: pointer; font-weight: 600; }
 details p { font-size: .92rem; line-height: 1.5; }
+.refcheck { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; font-size: .88rem; line-height: 1.5; background: var(--bg); }
+.refcheck span { font-variant-numeric: tabular-nums; }
+.refcheck .ok { color: #1a7f37; font-weight: 600; }
+.refcheck .bad { color: #b42318; font-weight: 600; }
