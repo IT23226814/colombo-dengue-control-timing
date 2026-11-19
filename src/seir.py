@@ -26,6 +26,13 @@ transmission through mosquitoes is absorbed into beta(t).
 
 Every parameter may be a float or a NumPy array. Arrays are broadcast against
 each other, so one call can run many parameter sets (e.g. MCMC samples) at once.
+
+Speed: `simulate` repeats the same RK4 step thousands of times, and with NumPy
+most of the time goes on Python overhead per step, not on arithmetic. When the
+Numba compiler is available, the step loop is compiled; it performs exactly the
+same floating-point operations in the same order as `rk4_step(rhs, ...)`, so the
+results agree to rounding (bit for bit on the same machine), and the automated
+tests check this. Without Numba the plain NumPy loop is used.
 """
 
 from __future__ import annotations
@@ -33,6 +40,11 @@ from __future__ import annotations
 from dataclasses import dataclass, fields, replace
 
 import numpy as np
+
+try:  # optional compiler for the RK4 loop in simulate(); the NumPy loop is used without it
+    import numba
+except ImportError:
+    numba = None
 
 DAYS_PER_WEEK = 7.0
 
@@ -120,7 +132,61 @@ def initial_state(p: dict[str, np.ndarray]) -> np.ndarray:
     return np.stack([S, p["e0"], p["i0"], R, np.zeros_like(S)])
 
 
-def simulate(params: Params, weeks: int, steps_per_week: int = 7) -> dict[str, np.ndarray]:
+def _rk4_loop_numpy(p, y, n, h):
+    """All n RK4 steps with NumPy; returns the states at every step, shape (n + 1,) + y.shape."""
+    out = np.empty((n + 1,) + y.shape)
+    out[0] = y
+    for k in range(n):
+        t = k * h
+        y = rk4_step(rhs, t, y, h, p, control(t + h / 2, p))
+        out[k + 1] = y
+    return out
+
+
+_LOOP_PARAMS = ["beta0", "amp", "phase", "period", "sigma", "gamma", "N", "start", "end", "reduction"]
+
+if numba is not None:
+    @numba.njit(cache=False)
+    def _rk4_loop_compiled(b0, amp, ph, per, sig, gam, N, st, en, red, y0, n, h):
+        # Same formulas, in the same order, as rk4_step(rhs, t, y, h, p, control(t + h/2, p)),
+        # written out for one parameter set (column c) at a time.
+        m = y0.shape[1]
+        out = np.empty((n + 1, 5, m))
+        dS, dE, dI, dR, dC = np.empty(4), np.empty(4), np.empty(4), np.empty(4), np.empty(4)
+        for c in range(m):
+            S, E, I, R, C = y0[0, c], y0[1, c], y0[2, c], y0[3, c], y0[4, c]
+            out[0, 0, c], out[0, 1, c], out[0, 2, c], out[0, 3, c], out[0, 4, c] = S, E, I, R, C
+            for k in range(n):
+                t = k * h
+                tm = t + h / 2
+                u = 1.0 - red[c] if (tm >= st[c] and tm < en[c]) else 1.0
+                ts = (t, t + h / 2, t + h / 2, t + h)
+                Si, Ei, Ii = S, E, I
+                for j in range(4):
+                    if j == 1 or j == 2:
+                        Si, Ei, Ii = S + h / 2 * dS[j - 1], E + h / 2 * dE[j - 1], I + h / 2 * dI[j - 1]
+                    elif j == 3:
+                        Si, Ei, Ii = S + h * dS[2], E + h * dE[2], I + h * dI[2]
+                    b = b0[c] * (1.0 + amp[c] * np.cos(2.0 * np.pi * (ts[j] - ph[c]) / per[c])) * u
+                    infection = b * Si * Ii / N[c]
+                    incidence = sig[c] * Ei
+                    recovery = gam[c] * Ii
+                    dS[j], dE[j], dI[j] = -infection, infection - incidence, incidence - recovery
+                    dR[j], dC[j] = recovery, incidence
+                S = S + h / 6 * (dS[0] + 2 * dS[1] + 2 * dS[2] + dS[3])
+                E = E + h / 6 * (dE[0] + 2 * dE[1] + 2 * dE[2] + dE[3])
+                I = I + h / 6 * (dI[0] + 2 * dI[1] + 2 * dI[2] + dI[3])
+                R = R + h / 6 * (dR[0] + 2 * dR[1] + 2 * dR[2] + dR[3])
+                C = C + h / 6 * (dC[0] + 2 * dC[1] + 2 * dC[2] + dC[3])
+                out[k + 1, 0, c], out[k + 1, 1, c], out[k + 1, 2, c] = S, E, I
+                out[k + 1, 3, c], out[k + 1, 4, c] = R, C
+        return out
+else:
+    _rk4_loop_compiled = None
+
+
+def simulate(params: Params, weeks: int, steps_per_week: int = 7,
+             compiled: bool | None = None) -> dict[str, np.ndarray]:
     """Integrate the model for `weeks` weeks with fixed RK4 steps of 1/steps_per_week weeks.
 
     Returns a dict with
@@ -133,17 +199,22 @@ def simulate(params: Params, weeks: int, steps_per_week: int = 7) -> dict[str, n
     at the step midpoint, so the right-hand side is smooth within every step.
     Start/end times on the step grid (e.g. whole weeks) are therefore handled
     exactly and keep full 4th-order accuracy.
+
+    compiled: use the compiled step loop (default: whenever Numba is available)
+    or, with False, the NumPy loop; both give the same numbers.
     """
     p = params.arrays()
     h = 1.0 / steps_per_week
     n = weeks * steps_per_week
     y = initial_state(p)
-    out = np.empty((n + 1,) + y.shape)
-    out[0] = y
-    for k in range(n):
-        t = k * h
-        y = rk4_step(rhs, t, y, h, p, control(t + h / 2, p))
-        out[k + 1] = y
+    use_compiled = (_rk4_loop_compiled is not None) if compiled is None else compiled
+    if use_compiled:
+        flat = [np.ascontiguousarray(np.broadcast_to(p[name], y.shape[1:]), dtype=float).reshape(-1)
+                for name in _LOOP_PARAMS]
+        y0 = np.ascontiguousarray(y.reshape(5, -1), dtype=float)
+        out = _rk4_loop_compiled(*flat, y0, n, h).reshape((n + 1,) + y.shape)
+    else:
+        out = _rk4_loop_numpy(p, y, n, h)
     C_weekly = out[::steps_per_week, 4]
     infections = np.diff(C_weekly, axis=0)
     return {

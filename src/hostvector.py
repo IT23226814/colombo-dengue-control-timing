@@ -37,6 +37,11 @@ try:  # in the notebook these names are already defined by the model and MCMC ce
 except ImportError:
     pass
 
+try:  # optional compiler for the RK4 loop in simulate_hv(), as in the SEIR model
+    import numba
+except ImportError:
+    numba = None
+
 MU_V_DEFAULT = 7 * 0.243   # adult Aedes aegypti field mortality: 0.064 + 0.179 per day [Brady et al. 2013]
 NU_DEFAULT = 7 / 10.0      # 1 / extrinsic incubation period of 10 days (8-12 days [WHO])
 A_DEFAULT = 7 * 0.25       # bites on humans per mosquito x infection probability (results insensitive, see tests)
@@ -124,14 +129,8 @@ def initial_state_hv(p, k0):
     return np.stack([S0, p["e0"], p["i0"], R0, np.zeros_like(S0), xs, xe, xi])
 
 
-def simulate_hv(params: HVParams, k_weekly, weeks: int, steps_per_week: int = 7) -> dict[str, np.ndarray]:
-    """Integrate for `weeks` weeks with RK4. k_weekly: capacity per week (rows); after the
-    last row it is held at its last value. u and k are taken at each step's midpoint."""
-    p = params.arrays()
-    k_weekly = np.asarray(k_weekly, dtype=float)
-    h = 1.0 / steps_per_week
-    n = weeks * steps_per_week
-    y = initial_state_hv(p, k_weekly[0])
+def _rk4_loop_hv_numpy(p, y, k_weekly, n, h):
+    """All n RK4 steps with NumPy; returns the states at every step."""
     out = np.empty((n + 1,) + y.shape)
     out[0] = y
     for s in range(n):
@@ -139,6 +138,78 @@ def simulate_hv(params: HVParams, k_weekly, weeks: int, steps_per_week: int = 7)
         k = k_weekly[min(int(t + h / 2), len(k_weekly) - 1)]
         y = rk4_step(rhs_hv, t, y, h, p, control(t + h / 2, p), k)
         out[s + 1] = y
+    return out
+
+
+_HV_LOOP_PARAMS = ["q", "A", "mu", "nu", "sigma", "gamma", "N", "start", "end", "reduction"]
+
+if numba is not None:
+    @numba.njit(cache=False)
+    def _rk4_loop_hv_compiled(q, A, mu, nu, sig, gam, N, st, en, red, kw, y0, n, h):
+        # Same formulas, in the same order, as rk4_step(rhs_hv, ...), for one column c at a time.
+        m = y0.shape[1]
+        W = kw.shape[0]
+        out = np.empty((n + 1, 8, m))
+        d = np.empty((4, 8))
+        z = np.empty(8)
+        for c in range(m):
+            y = y0[:, c].copy()
+            out[0, :, c] = y
+            for s in range(n):
+                t = s * h
+                kk = kw[min(int(t + h / 2), W - 1), c]
+                tm = t + h / 2
+                u = 1.0 - red[c] if (tm >= st[c] and tm < en[c]) else 1.0
+                for j in range(4):
+                    for v in range(8):
+                        if j == 0:
+                            z[v] = y[v]
+                        elif j == 3:
+                            z[v] = y[v] + h * d[2, v]
+                        else:
+                            z[v] = y[v] + h / 2 * d[j - 1, v]
+                    S, E, I, xs, xe, xi = z[0], z[1], z[2], z[5], z[6], z[7]
+                    lam_h = u * q[c] * xi
+                    lam_v = A[c] * I / N[c]
+                    inf_h = lam_h * S
+                    d[j, 0] = -inf_h
+                    d[j, 1] = inf_h - sig[c] * E
+                    d[j, 2] = sig[c] * E - gam[c] * I
+                    d[j, 3] = gam[c] * I
+                    d[j, 4] = sig[c] * E
+                    d[j, 5] = mu[c] * kk - lam_v * xs - mu[c] * xs
+                    d[j, 6] = lam_v * xs - (nu[c] + mu[c]) * xe
+                    d[j, 7] = nu[c] * xe - mu[c] * xi
+                for v in range(8):
+                    y[v] = y[v] + h / 6 * (d[0, v] + 2 * d[1, v] + 2 * d[2, v] + d[3, v])
+                out[s + 1, :, c] = y
+        return out
+else:
+    _rk4_loop_hv_compiled = None
+
+
+def simulate_hv(params: HVParams, k_weekly, weeks: int, steps_per_week: int = 7,
+                compiled: bool | None = None) -> dict[str, np.ndarray]:
+    """Integrate for `weeks` weeks with RK4. k_weekly: capacity per week (rows); after the
+    last row it is held at its last value. u and k are taken at each step's midpoint.
+    compiled: use the compiled step loop (default: whenever Numba is available) or, with
+    False, the NumPy loop; both give the same numbers."""
+    p = params.arrays()
+    k_weekly = np.asarray(k_weekly, dtype=float)
+    h = 1.0 / steps_per_week
+    n = weeks * steps_per_week
+    y = initial_state_hv(p, k_weekly[0])
+    use_compiled = (_rk4_loop_hv_compiled is not None) if compiled is None else compiled
+    if use_compiled:
+        shape = y.shape[1:]
+        flat = [np.ascontiguousarray(np.broadcast_to(p[name], shape), dtype=float).reshape(-1)
+                for name in _HV_LOOP_PARAMS]
+        rows = [np.broadcast_to(row, shape).reshape(-1) for row in k_weekly]   # each week's capacity, per column
+        kw = np.ascontiguousarray(np.stack(rows), dtype=float)
+        y0 = np.ascontiguousarray(y.reshape(8, -1), dtype=float)
+        out = _rk4_loop_hv_compiled(*flat, kw, y0, n, h).reshape((n + 1,) + y.shape)
+    else:
+        out = _rk4_loop_hv_numpy(p, y, k_weekly, n, h)
     infections = np.diff(out[::steps_per_week, 4], axis=0)
     return {"t": np.arange(n + 1) * h, "y": out, "weekly_infections": infections,
             "weekly_reported": p["rho"] * infections}
