@@ -23,7 +23,7 @@ This project asks: *if an intervention cuts dengue transmission by a given perce
 ```bash
 pip install -r requirements.txt notebook pytest
 jupyter notebook notebook/colombo-dengue-control-timing.ipynb
-python -m pytest -q          # 39 automated tests of the model, sampler, notebook and demo
+python -m pytest -q          # 41 automated tests of the model, sampler, notebook and demo
 ```
 
 ## Using the demo
