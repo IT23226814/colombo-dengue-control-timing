@@ -14,7 +14,7 @@ This project asks: *if an intervention cuts dengue transmission by a given perce
 
 ## Quick start
 
-**Notebook:** click the *Open in Colab* badge above, then *Runtime → Run all*. It installs what it needs and runs top to bottom in about 5 minutes (measured on a laptop; the notebook stops with an error if it takes longer than 10 minutes). The data are read from this repository, and every random number comes from one fixed seed, so the results are the same on every run.
+**Notebook:** click the *Open in Colab* badge above, then *Runtime → Run all*. It installs what it needs and runs top to bottom in about 7 minutes on a free Colab CPU runtime (measured: 418 s; about 1 minute on a laptop). The notebook stops with an error if a run takes longer than 10 minutes. The data are read from this repository, and every random number comes from one fixed seed, so the results are the same on every run.
 
 **Web demo:** open the [live demo](https://it23226814.github.io/colombo-dengue-control-timing/), or download this repository and double-click `docs/index.html`.
 
@@ -52,7 +52,7 @@ $$
 
 Here $u(t) = 1 - r$ while the intervention is active. Reported cases are a fraction $\rho$ of new infections, plus a constant background $b$, and are modelled as negative binomial.
 
-**Numerical method.** The equations are solved with a hand-written fourth-order Runge–Kutta (RK4) method using a one-day step.
+**Numerical method.** The equations are solved with a hand-written fourth-order Runge–Kutta (RK4) method using a one-day step. When the Numba compiler is installed (it is on Colab), the step loop is compiled; it does exactly the same arithmetic and gives identical results, only faster.
 
 **Calibration.** The unknown parameters ($R_e$, $a$, $\phi$, $\rho$, $s_0$, $I_0$, the dispersion and $b$) are estimated by a hand-written random-walk Metropolis MCMC sampler with 16 chains. Its priors come from the literature.
 
