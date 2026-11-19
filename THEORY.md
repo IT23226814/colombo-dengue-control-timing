@@ -230,7 +230,7 @@ These errors are below 2% of the width of the 95% credible interval, which is ab
 
 ## 5. Verification
 
-Every check is an `assert` in the notebook, so *Run all* stops if one fails. Further unit tests run with `pytest` on `src/` (39 tests).
+Every check is an `assert` in the notebook, so *Run all* stops if one fails. Further unit tests run with `pytest` on `src/` (41 tests).
 
 | Check | Expected | Obtained | Pass? |
 |---|---|---|---|
