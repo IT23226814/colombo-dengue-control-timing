@@ -2,3 +2,4 @@ numpy
 scipy
 matplotlib
 pandas
+numba        # optional: compiles the RK4 loop, same results, several times faster

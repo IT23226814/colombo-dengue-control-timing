@@ -87,3 +87,19 @@ def test_intervention_reduces_infections():
     none = hv.simulate_hv(base(), k, 40)["weekly_infections"].sum()
     cut = hv.simulate_hv(base(start=0.0, reduction=0.5), k, 40)["weekly_infections"].sum()
     assert cut < none
+
+
+def test_compiled_loop_matches_numpy_loop():
+    if hv.numba is None:
+        return
+    rng = np.random.default_rng(8)
+    n = 20
+    k = hv.capacity(RAIN, LEAD, rng.uniform(0, 2, n), rng.uniform(0.6, 4, n))
+    p = hv.HVParams(N=N, q=hv.q_from(rng.uniform(0.8, 3, n), 0.1), s0=0.1, e0=50.0, i0=50.0,
+                    start=rng.integers(0, 20, n).astype(float), reduction=0.4)
+    a = hv.simulate_hv(p, k, 30, compiled=True)["y"]
+    b = hv.simulate_hv(p, k, 30, compiled=False)["y"]
+    np.testing.assert_allclose(a, b, rtol=1e-12, atol=1e-12)
+    grid = p.with_(start=np.arange(4)[:, None] * 5.0)
+    np.testing.assert_allclose(hv.simulate_hv(grid, k, 30)["y"], hv.simulate_hv(grid, k, 30, compiled=False)["y"],
+                               rtol=1e-12, atol=1e-12)

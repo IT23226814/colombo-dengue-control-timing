@@ -159,7 +159,7 @@ $$
 - **Scenarios and verification:** $h = 1/7$ week (one day). The RK4 error there is $1.5\times10^{-3}$ people out of 48,560 cumulative infections (§4.3), negligible next to the data and parameter uncertainty. A 4× smaller step changes cases prevented by at most $1.2\times10^{-4}$ cases (§5.1).
 - **Calibration:** $h = 1/2$ week, keeping the error below one person while making each likelihood evaluation 3.5 times cheaper.
 
-**Vectorisation.** All parameters may be NumPy [24] arrays, so one RK4 call integrates thousands of parameter sets at once. This is how MCMC chains and posterior samples are run.
+**Vectorisation.** All parameters may be NumPy [24] arrays, so one RK4 call integrates thousands of parameter sets at once. This is how MCMC chains and posterior samples are run. With NumPy, most of the time per step is Python overhead rather than arithmetic, so when Numba is available the step loop is compiled. It performs the same floating-point operations in the same order as the NumPy version and gives bit-for-bit identical results; the tests and notebook Section 4.1 check this. This cuts *Run all* from about 29 minutes to about 7 minutes on a free Colab runtime (295 s to 67 s on a laptop).
 
 **Stability.** The fastest rate in the SEIR model is $\gamma \approx 1.4$ per week. With $h \le 1/2$ week, $h\gamma \le 0.7$, well inside RK4's stability region ($|h\lambda| \lesssim 2.8$ on the negative real axis). In the host–vector model the fastest mosquito rate is $\nu + \mu \approx 2.4$ per week, giving $h(\nu+\mu) \le 1.2$.
 

@@ -83,3 +83,20 @@ def test_vectorised_matches_scalar_runs():
 def test_rejects_impossible_initial_state():
     with pytest.raises(ValueError):
         seir.simulate(BASE.with_(s0=1e-6, i0=100.0), weeks=1)
+
+
+@pytest.mark.skipif(seir.numba is None, reason="Numba not installed")
+def test_compiled_loop_matches_numpy_loop():
+    rng = np.random.default_rng(7)
+    n = 50
+    p = seir.Params(N=1e6, beta0=rng.uniform(0.5, 6, n), amp=rng.uniform(0, 0.9, n), phase=rng.uniform(0, 52, n),
+                    s0=rng.uniform(0.05, 1, n), e0=rng.uniform(0, 500, n), i0=rng.uniform(1, 500, n),
+                    start=rng.integers(0, 40, n).astype(float), end=rng.integers(41, 60, n).astype(float),
+                    reduction=rng.uniform(0, 0.8, n))
+    for spw in (2, 7):                                              # the steps the notebook uses
+        a = seir.simulate(p, 52, spw, compiled=True)["y"]
+        b = seir.simulate(p, 52, spw, compiled=False)["y"]
+        np.testing.assert_allclose(a, b, rtol=1e-12, atol=1e-9)
+    grid = p.with_(start=np.arange(5)[:, None] * 4.0)              # 2-D broadcast, as in the scenario grid
+    np.testing.assert_allclose(seir.simulate(grid, 30)["y"], seir.simulate(grid, 30, compiled=False)["y"],
+                               rtol=1e-12, atol=1e-9)
